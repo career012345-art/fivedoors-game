@@ -251,9 +251,18 @@
 
   function profileCompaniesText() {
     var p = state.profile;
-    if (!p || !p.notice) return "";
-    var n = p.notice;
+    if (!p) return "";
     var bits = [];
+    if (p.orgCard) {
+      var o = p.orgCard;
+      var card = [];
+      if (o.s) card.push("초임 " + fmtManwon(o.s));
+      if (o.p) card.push("평균보수 " + fmtManwon(o.p));
+      if (o.e) card.push(o.e.toLocaleString() + "명");
+      if (o.w) card.push("근속 " + o.w + "년");
+      if (card.length) bits.push("[알리오] " + card.join(", "));
+    }
+    var n = p.notice || {};
     if ((n.coreValues || []).length) bits.push("핵심가치: " + n.coreValues.join(","));
     if ((n.talents || []).length) bits.push("인재상: " + n.talents.join(","));
     return bits.join(" / ");
@@ -928,8 +937,10 @@
       '<div class="screen">' + head +
       '<div class="card"><h2>🔍 확인하고 보완해 주세요</h2>' +
       '<p class="desc">서류에서 자동으로 찾아낸 내용이에요. 틀리면 고치고, 비면 채워주세요.\n(칩을 터치하면 삭제됩니다)</p>' +
-      '<label>기관 이름</label>' +
-      '<input type="text" id="orgName" maxlength="30" placeholder="예: 한국전력공사" value="' + escText(p.org.name) + '">' +
+      '<label>기관 이름 ' + (window.ALIO_DATA ? '(공공기관 ' + window.ALIO_DATA.length + '개 검색 — 고르면 경영공시 카드가 떠요!)' : '') + '</label>' +
+      '<input type="text" id="orgName" maxlength="30" autocomplete="off" placeholder="예: 한국전력공사" value="' + escText(p.org.name) + '">' +
+      '<div id="orgSug"></div>' +
+      '<div id="orgCardInfo">' + (p.orgCard ? alioCardHtml(p.orgCard) : "") + '</div>' +
       '<label>지원 직군·직무</label>' +
       '<input type="text" id="orgGroup" maxlength="20" placeholder="예: 사무" value="' + escText(p.org.group) + '">' +
       '<label>핵심가치</label>' + chipRow("cvChips", n.coreValues) +
@@ -962,10 +973,43 @@
     bindAdd("cvAdd", n.coreValues);
     bindAdd("ttAdd", n.talents);
 
+    // 공공기관 자동완성 (알리오 경영공시 데이터)
+    var orgInput = el("orgName");
+    if (orgInput && window.ALIO_DATA) {
+      orgInput.addEventListener("input", function () {
+        var qt = orgInput.value.trim();
+        var sug = el("orgSug");
+        if (!qt) { sug.innerHTML = ""; return; }
+        var hits = [];
+        for (var i = 0; i < window.ALIO_DATA.length && hits.length < 8; i++) {
+          if (window.ALIO_DATA[i].n.indexOf(qt) !== -1) hits.push(window.ALIO_DATA[i]);
+        }
+        sug.innerHTML = hits.length
+          ? '<div class="ncs-sug">' + hits.map(function (o, i2) {
+              return '<button type="button" data-i="' + window.ALIO_DATA.indexOf(o) + '">' + escText(o.n) +
+                '<span class="path">' + escText(o.t || "") + (o.m ? " · " + escText(o.m) : "") + '</span></button>';
+            }).join("") + '</div>'
+          : "";
+        Array.prototype.forEach.call(sug.querySelectorAll("button"), function (b) {
+          b.onclick = function () {
+            var o = window.ALIO_DATA[parseInt(b.getAttribute("data-i"), 10)];
+            orgInput.value = o.n;
+            p.org.name = o.n;
+            p.orgCard = o;
+            sug.innerHTML = "";
+            el("orgCardInfo").innerHTML = alioCardHtml(o);
+            saveState();
+          };
+        });
+      });
+    }
+
     function collectConfirm() {
       p.org.name = el("orgName").value.trim();
       p.org.group = el("orgGroup").value.trim();
       p.orgInfo.mission = el("mission").value.trim();
+      // 직접 수정해서 카드 기관명과 달라지면 카드 해제
+      if (p.orgCard && p.orgCard.n !== p.org.name) p.orgCard = null;
       saveState();
     }
     el("backBtnC").onclick = function () { collectConfirm(); state.introStep = 3; render(); };
@@ -994,6 +1038,24 @@
       case "docQuals": return (d.relQuals || []).concat(n.bonusCerts || []);
     }
     return [];
+  }
+
+  /* 공공기관 경영공시 카드 (알리오 데이터, 금액 단위: 천원) */
+  function fmtManwon(cheon) {
+    if (!cheon) return null;
+    return Math.round(cheon / 10).toLocaleString() + "만원";
+  }
+  function alioCardHtml(o) {
+    if (!o) return "";
+    var bits = [];
+    if (o.s) bits.push("신입 초임 <b>" + fmtManwon(o.s) + "</b>");
+    if (o.p) bits.push("평균보수 " + fmtManwon(o.p));
+    if (o.e) bits.push("임직원 " + o.e.toLocaleString() + "명");
+    if (o.w) bits.push("평균 근속 " + o.w + "년");
+    return '<div class="ncs-info"><b>🏛️ ' + escText(o.n) + '</b>' +
+      (o.t ? ' · ' + escText(o.t) : "") + (o.m ? ' · ' + escText(o.m) : "") +
+      '<br>' + bits.join(" · ") +
+      '<br><span style="opacity:.7">알리오 경영공시 ' + (o.yr || "") + '년 기준</span></div>';
   }
 
   /* 3번 문(기관의 방)의 자료 카드: 미션·비전 + 실제 자소서 문항 */
@@ -2050,6 +2112,19 @@
 
     // 지원서 옮겨쓰기 준비물
     var compHtml = "";
+    // 기관 경영공시 카드 (알리오)
+    if (p.orgCard) {
+      var oc = p.orgCard;
+      compHtml += '<h2>🏛️ 지원 기관 정보 (알리오 경영공시 ' + (oc.yr || "") + '년 기준)</h2>' +
+        '<table class="p-card">' +
+        '<tr><td class="k">기관 유형</td><td>' + esc(oc.t || "-") + '</td>' +
+        '<td class="k">주무부처</td><td>' + esc(oc.m || "-") + '</td></tr>' +
+        '<tr><td class="k">신입 초임</td><td><b>' + (oc.s ? fmtManwon(oc.s) : "-") + '</b></td>' +
+        '<td class="k">직원 평균보수</td><td>' + (oc.p ? fmtManwon(oc.p) : "-") + '</td></tr>' +
+        '<tr><td class="k">임직원 수</td><td>' + (oc.e ? oc.e.toLocaleString() + "명" : "-") + '</td>' +
+        '<td class="k">평균 근속</td><td>' + (oc.w ? oc.w + "년" : "-") + '</td></tr>' +
+        '</table>';
+    }
     var cards = [];
     C.rooms.forEach(function (room) {
       room.questions.forEach(function (q0) {

@@ -26,7 +26,7 @@ window.GAME_CONTENT = {
   meta: {
     title: "다섯 개의 문",
     subtitle: "공공기관 합격 준비실",
-    version: "1.0.1"
+    version: "1.1.0"
   },
 
   settings: {
