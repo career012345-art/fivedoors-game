@@ -26,12 +26,12 @@ window.GAME_CONTENT = {
   meta: {
     title: "다섯 개의 문",
     subtitle: "공공기관 합격 준비실",
-    version: "1.0.0"
+    version: "1.0.1"
   },
 
   settings: {
     // 구글시트 연동 주소 (새 시트의 Apps Script 웹앱 URL — 비우면 전송 생략)
-    sheetEndpoint: "",
+    sheetEndpoint: "https://script.google.com/macros/s/AKfycbzrAM1_Q3dPKEKUTv_k1W1DQhXjObhBfAv-QQy2SeePIdevTUlgbqw4xMiClXvkTAHfjA/exec",
 
     badgeThresholdPercent: 60,
     truthRoomMinBadges: 2,      // 배지 2개 미만이면 진실의 방
